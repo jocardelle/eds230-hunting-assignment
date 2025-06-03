@@ -48,6 +48,7 @@ base_params <- c(rprey = 0.95, alpha = 0.01, eff = 0.6, pmort = 0.4, K = 2000)
 pars <- c(base_params, rhunt = 0.01, prey_min = 50)
 currpop <- c(prey = 100, pred = 10)
 days <- seq(0, 100, by = 1)
+years <- seq(1, 18250, by = 365)
 
 # Run the ode model
 res <- ode(y = currpop, times = days, func = lotvhunt, parms = pars)
@@ -116,8 +117,8 @@ ggplot(results, aes(x = prey_min, y = rhunt, z = as.numeric(stable))) +
 # Different values for parameters 
 scenarios <- tibble(
   name = c("Low hunt", "Moderate hunt", "High Hunt", "Extreme Hunt"),
-  rhunt = c(0.002, 0.01, 0.05, 0.1),
-  prey_min = c(400, 300, 200, 100)
+  rhunt = c(0.001, 0.01, 0.05, 0.1),
+  prey_min = c(250, 500, 750, 1000)
 )
 
 results <- scenarios %>%
@@ -140,5 +141,69 @@ ggplot(results_long, aes(x = time, y = population, color = species)) +
   labs(title = "Population Dynamics Under Different Hunting Scenarios",
        x = "Time (days)", y = "Population") +
   theme_minimal()
+
+ggplot(results_long, aes(x = time, y = population, color = species)) +
+  geom_line() +
+  facet_wrap(~ prey_min, ncol = 2) +
+  labs(title = "Population Dynamics Under Different Hunting Scenarios",
+       x = "Time (days)", y = "Population") +
+  theme_minimal()
+```
+
+### From chat...
+```{r}
+# Lotka-Volterra with hunting
+lotvhunt <- function(t, pop, pars) {
+  with(as.list(c(pars, pop)), {
+    hunt <- ifelse(prey >= prey_min, rhunt * prey, 0)
+    hunt <- min(hunt, prey)
+    dprey <- rprey * (1 - prey / K) * prey - alpha * prey * pred - hunt
+    dpred <- eff * alpha * prey * pred - pmort * pred
+    return(list(c(dprey, dpred)))
+  })
+}
+
+# Updated base parameters
+base_pars <- list(
+  rprey = 0.95, alpha = 0.01, eff = 0.6, pmort = 0.4,
+  K = 2000
+)
+
+# Initial populations
+init_pop <- c(prey = 750, pred = 150)  # Start with healthy populations
+
+# Time span (50 years)
+times <- seq(0, 50, by = 1)
+
+# Hunting parameter grid
+rhunt_vals <- seq(0, 0.05, by = 0.005)
+prey_min_vals <- seq(50, 1000, by = 100)
+results <- expand.grid(rhunt = rhunt_vals, prey_min = prey_min_vals)
+
+# Run simulations
+outcomes <- results %>%
+  rowwise() %>%
+  mutate(
+    stable = {
+      pars <- c(base_pars, rhunt = rhunt, prey_min = prey_min)
+      sim <- ode(func = lotvhunt, y = init_pop, times = days, parms = pars)
+      final_prey <- tail(sim[, "prey"], 1)
+      final_pred <- tail(sim[, "pred"], 1)
+      final_prey >= 100 && final_pred >= 50
+    }
+  )
+
+# Plotting the stable outcomes
+ggplot(outcomes, aes(x = rhunt, y = prey_min, fill = stable)) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = c("TRUE" = "forestgreen", "FALSE" = "firebrick")) +
+  labs(
+    title = "Sustainable Hunting Outcomes with Updated Parameters",
+    x = "Hunting Rate (rhunt)",
+    y = "Minimum Prey Threshold (prey_min)",
+    fill = "Stable"
+  ) +
+  theme_minimal()
+
 ```
 
