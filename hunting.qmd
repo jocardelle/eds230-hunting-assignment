@@ -25,20 +25,22 @@ library(here)
 ```{r}
 source(here("lotvhuntmod_haylee.R"))
 ```
+
 ## Part 2
+
+**Rubric: Stability Metric**The metric captures some aspect of stability and the metric is implemented as a function - that can be applied to a time series (or multiple time series)
+
+**Rubric: Exploration of Stability** compared the stability metric across different values of parameters used to define hunting. The comparison should be explicit in the Rmarkdown - it could be a graph or a table but some way to show how different hunting levels influence stability
+
 
 We chose to define stability as prey populations above 200 and predator populations above 20 after 100 years. We kept the 10:1 ratio of prey:predator that matched the initial conditions we went over in class. It makes sense that there would be much more prey than predators, and we're hoping both populations would increase over time. 
 
 Explore how different hunting levels and different minimum prey populations (before hunting is allowed) are likely to effect the stability of the populations of both predator and prey.
 
-
 A key challenge is how you might want to define stability? It is up to you but you will need to write a sentence to explain why you chose the measure that you did. 
 
 It is up to you how you "explore" hunting  - you can simply try different values of the parameters in your hunting model or do it more formally by running your model across a range of values. You could think about parameter interactions
 
-You can assume the following are best guesses of key parameters
-
-rprey=0.95, alpha=0.01, eff=0.6,pmort=0.4, K=2000,
 
 ```{r}
 # Base parameters given in the assignment
