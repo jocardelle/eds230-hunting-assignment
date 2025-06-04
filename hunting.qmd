@@ -123,16 +123,17 @@ ggplot(all_results, aes(x = time, y = population, color = species)) +
   theme_minimal()
 ```
 
-Looking at the plot results from this parameter grid, we can see that a hunting rate of [DESCRIBE WHAT'S MOST STABLE AHHH ]
+Looking at the plot results from this parameter grid, we can see that a hunting rate of 0.01 is the most stable, combined with a minimum prey population of 50.
 
 ### Calculate Stable Population Values
 
 Now, let's use our new derivative functions from `lotvmod_hunt.R` to calculate what the values for stable predator and prey populations should be. We will do this by setting both derivatives equal to 0 and solving. These re-arranged formulas will then be plugged into solve for `preyi`, intial prey population, and `predi`, initial predator population. 
 
-[EXPLAIN HOW WE TOOK THE MOST STABLE PARAMETERS ABOVE TO CHECK THIS PART HERE FOR PREY MIN AND RHUNT]
+Based on our parameter grid analysis above, we identified the most stable hunting scenario as `rhunt` = 0.01 and `prey_min` = 50. With these parameters both populations remained above the stability threshold the most through the 100 days and had sustained oscillations. We'll now use these parameters to calculate our stable predator and prey populations. 
+
 ```{r}
 # Set parameter list
-pars <- data.frame(rprey = 0.95, alpha = 0.01, eff = 0.6, pmort = 0.4, K = 2000, rhunt = 0.05, prey_min = 50)
+pars <- data.frame(rprey = 0.95, alpha = 0.01, eff = 0.6, pmort = 0.4, K = 2000, rhunt = 0.01, prey_min = 50)
 
 # Calculate initial conditions we know to be stable 
 preyi <- with(pars, pmort / (eff * alpha))
@@ -172,4 +173,5 @@ print(paste0("Stable predator population: ", round(predi, 2)))
 
 ```
 
-[SOME FINAL CONCLUSION IDK]
+In the beginning of our analysis, we defined stability as both predator and prey populations above 50 for 100 days. Through exploration of different hunting rates and minimum prey thresholds, we found that lower hunting rates (`rhunt` = 0.01), combined with reasonable minimum prey levels (`prey_min` = 50) consistently produced stable patterns. The derivative functions calculated stable prey populations as 66.67 and stable predator populations as 90.83. For wildlife management, we recommend low hunting rates, under 1% of prey population, combined with protective thresholds on prey when they are at low population levels. These results show that hunting management needs to take into account long-term ecosystem stability.
+
