@@ -22,31 +22,26 @@ library(ggpubr)
 library(here)
 ```
 
+## Part 1 - Hunting Function
+
 ```{r}
-source(here("lotvhuntmod_hunt.R"))
+source(here("lotvmod_hunt.R"))
+source(here("stability.R"))
 ```
 
-## Part 2
+## Part 2 - Stability
 
-**Rubric: Stability Metric**The metric captures some aspect of stability and the metric is implemented as a function - that can be applied to a time series (or multiple time series)
+We chose to define stability as **prey and predator populations above 50 over the next 100 days**. While this is could be considered a large drop-off in population given the intial conditions (especially for the prey), it is important to remember that the prey populations are being subjected to two different forms of "net loss": predation and mortality. These two processes will dampen prey populations quickly, but they will stabilize. We believe that ~50 characterizes where that population stabilizes given the initial conditions we've been provided in the assignment. The same roughly holds true for the predators, where their population depends on mortality as well as prey population size.   
 
-**Rubric: Exploration of Stability** compared the stability metric across different values of parameters used to define hunting. The comparison should be explicit in the Rmarkdown - it could be a graph or a table but some way to show how different hunting levels influence stability
+Before we jump into the stability analysis itself, we did some preliminary exploration of our function to make sure we were modeling the system accurately. 
 
-
-We chose to define stability as prey populations above 200 and predator populations above 20 after 50 years. We kept the 10:1 ratio of prey:predator that matched the initial conditions we went over in class. It makes sense that there would be much more prey than predators, and we're hoping both populations would increase over time. 
-
-Explore how different hunting levels and different minimum prey populations (before hunting is allowed) are likely to effect the stability of the populations of both predator and prey.
-
-A key challenge is how you might want to define stability? It is up to you but you will need to write a sentence to explain why you chose the measure that you did. 
-
-It is up to you how you "explore" hunting  - you can simply try different values of the parameters in your hunting model or do it more formally by running your model across a range of values. You could think about parameter interactions
-
+### Initial Exploration
 
 ```{r}
 # Base parameters given in the assignment
 base_params <- c(rprey = 0.95, alpha = 0.01, eff = 0.6, pmort = 0.4, K = 2000)
-pars <- c(base_params, rhunt = 0.01, prey_min = 50)
-currpop <- c(prey = 300, pred = 150)
+pars <- c(base_params, rhunt = 0.001, prey_min = 50)
+currpop <- c(prey = 60, pred = 20)
 days <- seq(0, 100, by = 1)
 
 # Run the ode model
@@ -67,107 +62,114 @@ ggplot(res_long, aes(x = time, y = population, color = species)) +
     theme_minimal()
 ```
 
+We chose to select the `radau` method for the ODE solver because we were getting some warnings about step size. This seemed to help with missing data issues later on. 
 
-## Scenario Method
+Now that we feel good about our model, let's move on to checking stability 
 
-### Scenario 1: Low hunting rate, high threshold, Scenario 2: Reasonable hunting, Scenario 3: Higher hunting, Scenario 4: Very high hunting
+### Hunting Scenarios
+
+We'll use a parameter grid to test different combinations of minimum prey and hunting rates all together.
+
 ```{r}
-# Different values for parameters 
-scenarios <- tibble(
-  name = c("Low hunt", "Moderate hunt", "High Hunt", "Extreme Hunt"),
-  rhunt = c(0.001, 0.01, 0.05, 0.1),
-  prey_min = 50,
-)
+# Create all combinations of rhunt and prey_min
+prey_min_values = c(30, 50, 100, 200)
+rhunt_values = c(0.01, 0.05, 0.1, 0.15)
 
-days_short <- seq(1, 500, by = 1)
+# Combine prey min and rhunt into a parameter grid
+param_grid <- expand.grid(rhunt = rhunt_values, 
+                          prey_min = prey_min_values)
 
-results <- scenarios %>%
-  mutate(
-    output = map2(rhunt, prey_min, function(rh, pm) {
-      pars <- c(base_params, rhunt = rh, prey_min = pm)
-      as.data.frame(ode(y = currpop, times = days_short, func = lotvhunt, parms = pars, method = "radau"))
-    })
-  )
+# Run model
+results <- pmap(param_grid, function(rhunt, prey_min) {
+  pars <- c(base_params, rhunt = rhunt, prey_min = prey_min)
+  res <- ode(y = currpop, times = days, func = lotvhunt, parms = pars, method = "radau")
+  res_df <- as.data.frame(res)
+  colnames(res_df) <- c("time", "prey", "pred")
+  
+  res_long <- res_df %>%
+    pivot_longer(cols = c(prey, pred), names_to = "species", values_to = "population") %>%
+    mutate(rhunt = rhunt, prey_min = prey_min)
+  
+  return(res_long)
+})
 
+# Run stability check
+stability_results <- map_lgl(results, check_stability)
 
-# Plot the scenarios
-results_long <- results %>%
-  mutate(name = factor(name, levels = name)) %>%
-  unnest(output) %>%
-  pivot_longer(cols = c(prey, pred), names_to = "species", values_to = "population")
+# Create stability label table
+stability_labels <- param_grid %>%
+  mutate(stable = ifelse(stability_results, "Stable", "Unstable")) %>%
+  mutate(facet_label = paste0("rhunt = ", rhunt, ", prey_min = ", prey_min, "\n(", stable, ")")) %>%
+  arrange(rhunt, prey_min)  
 
-ggplot(results_long, aes(x = time, y = population, color = species)) +
-  geom_line() +
-  facet_wrap(~ name, ncol = 2) +
-  labs(title = "Population Dynamics Under Different Hunting Scenarios",
-       x = "Time (days)", y = "Population") +
-  theme_minimal()
+# Combine all results
+all_results <- bind_rows(results) %>%
+  left_join(stability_labels, by = c("rhunt", "prey_min")) %>%
+  mutate(facet_label = factor(facet_label, levels = unique(stability_labels$facet_label)))
 ```
 
 ```{r}
-# Different values for parameters 
-scenarios_prey <- tibble(
-  name = c("Low prey_min", "Moderate prey_min", "High prey_min", "Extreme prey_min"),
-  prey_min = c(50, 100, 150, 200),
-  rhunt = 0.1
-)
+#| fig-width: 9
+#| fig-height: 5
 
-days_short <- seq(1, 100, by = 1)
-
-results_prey <- scenarios_prey %>%
-  mutate(
-    output = map2(prey_min, rhunt, function(rh, pm) {
-      pars <- c(base_params, rhunt = rh, prey_min = pm)
-      as.data.frame(ode(y = currpop, times = days_short, func = lotvhunt, parms = pars, method = "radau"))
-    })
-  )
-
-# Plot the scenarios
-results_long_prey <- results_prey %>%
-  mutate(name = factor(name, levels = name)) %>%
-  unnest(output) %>%
-  pivot_longer(cols = c(prey, pred), names_to = "species", values_to = "population")
-
-ggplot(results_long_prey, aes(x = time, y = population, color = species)) +
+# Plot results
+ggplot(all_results, aes(x = time, y = population, color = species)) +
   geom_line() +
-  facet_wrap(~ name, ncol = 2) +
-  labs(title = "Population Dynamics Under Different Hunting Scenarios",
-       x = "Time (days)", y = "Population") +
+  facet_wrap(~ facet_label) +
+  labs(title = "Predator and prey populations over time for\ndifferent hunting rates and mininum prey populations",
+    x = "Time (days)",
+    y = "Population",
+    color = "Species") +
   theme_minimal()
 ```
 
-```{r}
-# set parameter list
-pars <- data.frame(rprey = 0.1, alpha = 0.6, eff = 0.8, pmort = 0.4, K = 200, rhunt = 0.01, prey_min = 100)
+Looking at the plot results from this parameter grid, we can see that a hunting rate of [DESCRIBE WHAT'S MOST STABLE AHHH ]
 
-# now lets try initial conditions that will be stable
+### Calculate Stable Population Values
+
+Now, let's use our new derivative functions from `lotvmod_hunt.R` to calculate what the values for stable predator and prey populations should be. We will do this by setting both derivatives equal to 0 and solving. These re-arranged formulas will then be plugged into solve for `preyi`, intial prey population, and `predi`, initial predator population. 
+
+[EXPLAIN HOW WE TOOK THE MOST STABLE PARAMETERS ABOVE TO CHECK THIS PART HERE FOR PREY MIN AND RHUNT]
+```{r}
+# Set parameter list
+pars <- data.frame(rprey = 0.95, alpha = 0.01, eff = 0.6, pmort = 0.4, K = 2000, rhunt = 0.05, prey_min = 50)
+
+# Calculate initial conditions we know to be stable 
 preyi <- with(pars, pmort / (eff * alpha))
 predi <- with(pars, rprey / alpha * (1 - (pmort / (eff * alpha *K))) - rhunt / alpha)
 
-preyi
-predi
-# times when you want to evaluate
-days <- seq(from = 1, to = 500)
-
-# lets first see what happens when we start with 1 of each
+# Start with 1 for each as a test
 currpop <- c(prey = 1, pred = 1)
-# run our differential equation solver
-res <- ode(func = lotvhunt, y = currpop, times = days, parms = pars)
-# extract the results
+res <- ode(func = lotvhunt, y = currpop, times = days, parms = pars, method = "radau")
 res_smallstart <- as.data.frame(res) %>% gather(key = "animal", value = "pop", -time)
-# graph both populations over time
+
+# Graph results
 p1 <- ggplot(res_smallstart, aes(time, pop, col = animal)) +
-  geom_line()
+  geom_line() +
+  labs(title = "Population stability assuming intial populations of 1 for predator and prey",
+       x = "Time (days)",
+       y = "Population",
+       color = "Species") +
+  theme_minimal()
 p1
 
-# lets first see what happens when we start our estimates of stable populations
+# Use stable population estimates
 stablepop <- c(prey = preyi, pred = predi)
-res <- ode(func = lotvhunt, y = stablepop, times = days, parms = pars)
-# estract the results
+res <- ode(func = lotvhunt, y = stablepop, times = days, parms = pars, method = "radau")
 res_stablestart <- as.data.frame(res) %>% gather(key = "animal", value = "pop", -time)
-# graph both populations over time
+
+# Graph results
 p2 <- ggplot(res_stablestart, aes(time, pop, col = animal)) +
-  geom_line()
+  geom_line() +
+  labs(title = "Population stability using derivative-derived stable starting points",
+       x = "Time (days)",
+       y = "Population",
+       color = "Species") +
+  theme_minimal()
 p2
+print(paste0("Stable prey population: ", round(preyi, 2)))
+print(paste0("Stable predator population: ", round(predi, 2)))
+
 ```
 
+[SOME FINAL CONCLUSION IDK]
